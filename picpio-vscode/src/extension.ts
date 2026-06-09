@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs   from 'fs';
+import * as path from 'path';
 import { HomePanel }        from './homePanel';
 import { createStatusBar }  from './statusBar';
 import { TaskTreeProvider, QuickAccessProvider } from './taskTree';
@@ -6,6 +8,77 @@ import { ProjectProvider, LibrariesProvider }    from './projectTree';
 import { picpio, getTerminal }  from './terminal';
 import { newProjectWizard }     from './newProject';
 import { openSerialMonitor }    from './serialMonitor';
+
+/** Find the highest installed XC8 version under C:/Program Files/Microchip/xc8/ */
+function findXC8Version(): string {
+    const base = 'C:/Program Files/Microchip/xc8';
+    try {
+        if (!fs.existsSync(base)) return 'v3.10';
+        const versions = fs.readdirSync(base)
+            .filter(d => /^v\d/.test(d))
+            .sort()
+            .reverse();
+        return versions[0] ?? 'v3.10';
+    } catch { return 'v3.10'; }
+}
+
+/** Parse picpio.ini from projectDir and return raw key-value map */
+function parseIniRaw(projectDir: string): Record<string, string> {
+    const iniPath = path.join(projectDir, 'picpio.ini');
+    if (!fs.existsSync(iniPath)) return {};
+    const text = fs.readFileSync(iniPath, 'utf8');
+    const result: Record<string, string> = {};
+    for (const line of text.split('\n')) {
+        const m = line.match(/^\s*(\w+)\s*=\s*(.+)/);
+        if (m) result[m[1].trim()] = m[2].trim();
+    }
+    return result;
+}
+
+/** Write .vscode/c_cpp_properties.json synchronously so Ctrl+Click works immediately */
+function ensureCppProperties(projectDir: string): void {
+    const vscodedir = path.join(projectDir, '.vscode');
+    const outFile   = path.join(vscodedir, 'c_cpp_properties.json');
+    if (fs.existsSync(outFile)) return;  // already present — don't overwrite
+
+    const ini      = parseIniRaw(projectDir);
+    const mcu      = ini['mcu']      ?? 'PIC18F27K40';
+    const clock    = ini['clock_hz'] ?? '64000000';
+    const extras   = (ini['lib_extra_dirs'] ?? '').split(',').map(s => s.trim()).filter(Boolean);
+
+    const xc8ver   = findXC8Version();
+    const xc8base  = `C:/Program Files/Microchip/xc8/${xc8ver}`;
+
+    const includePath = [
+        '${workspaceFolder}/src',
+        '${workspaceFolder}/include',
+        '${workspaceFolder}/lib/**',
+        `${xc8base}/pic/include`,
+        `${xc8base}/pic/include/c99`,
+        `${xc8base}/pic/include/proc`,
+        'C:/picpio/packs/PIC18F-K_DFP/xc8/pic/include',
+        'C:/picpio/packs/PIC18F-K_DFP/xc8/pic/include/proc',
+        'C:/picpio/arduino_compat',
+        ...extras,
+    ];
+
+    const content = {
+        configurations: [{
+            name:             'PIC',
+            includePath,
+            defines:          [`__${mcu}__`, `_XTAL_FREQ=${clock}`],
+            compilerPath:     `${xc8base}/bin/xc8-cc.exe`,
+            cStandard:        'c99',
+            intelliSenseMode: 'gcc-x86',
+        }],
+        version: 4,
+    };
+
+    try {
+        fs.mkdirSync(vscodedir, { recursive: true });
+        fs.writeFileSync(outFile, JSON.stringify(content, null, 2));
+    } catch { /* non-fatal */ }
+}
 
 export function activate(context: vscode.ExtensionContext): void {
 
@@ -121,15 +194,9 @@ export function activate(context: vscode.ExtensionContext): void {
     context.subscriptions.push(libW);
 
     // ── Auto-open Home + ensure IntelliSense files on project load ───────────
-    const fsm  = require('fs')   as typeof import('fs');
-    const pm   = require('path') as typeof import('path');
     const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (root && fsm.existsSync(pm.join(root, 'picpio.ini'))) {
-        // Auto-generate c_cpp_properties.json if missing so Ctrl+Click works immediately
-        const cppProps = pm.join(root, '.vscode', 'c_cpp_properties.json');
-        if (!fsm.existsSync(cppProps)) {
-            picpio('vscode');
-        }
+    if (root && fs.existsSync(path.join(root, 'picpio.ini'))) {
+        ensureCppProperties(root);
         HomePanel.createOrShow(context);
     }
 
