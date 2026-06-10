@@ -74,14 +74,26 @@ function micros(): number { return Math.floor(virtualMillis * 1000); }
 
 const Serial = {
     begin(baud: number) { emit({ t: 'serialBegin', baud: Number(baud) }); },
+    end() { /* no-op */ },
     print(x: unknown) { emit({ t: 'serial', dir: 'tx', data: String(x) }); },
     println(x?: unknown) { emit({ t: 'serial', dir: 'tx', data: (x === undefined ? '' : String(x)) + '\n' }); },
+    // arduino_compat's typed Serial.print_*/println_* members (used directly,
+    // or via the Serial_print()/Serial_println() _Generic macros)
+    print_s(x: unknown) { this.print(x); },
+    print_i(x: unknown) { this.print(x); },
+    print_f(f: number, decimals?: number) { this.print(Number(f).toFixed(decimals === undefined ? 2 : Number(decimals))); },
+    println_s(x: unknown) { this.println(x); },
+    println_i(x: unknown) { this.println(x); },
+    println_f(f: number, decimals?: number) { this.println(Number(f).toFixed(decimals === undefined ? 2 : Number(decimals))); },
     write(x: unknown) { emit({ t: 'serial', dir: 'tx', data: typeof x === 'number' ? String.fromCharCode(x) : String(x) }); },
     available() { return 0; },
     read() { return -1; },
     peek() { return -1; },
     flush() { /* no-op */ },
 };
+
+function Serial_print(x: unknown): void { Serial.print(x); }
+function Serial_println(x: unknown): void { Serial.println(x); }
 
 const Wire = {
     _addr: 0,
@@ -139,7 +151,7 @@ const baseGlobals: Record<string, unknown> = {
     SPI_MODE0: 0, SPI_MODE1: 1, SPI_MODE2: 2, SPI_MODE3: 3,
     pinMode, digitalWrite, digitalRead, analogWrite, analogRead,
     delay, delayMicroseconds, millis, micros,
-    Serial, Wire, SPI,
+    Serial, Wire, SPI, Serial_print, Serial_println,
     map, constrain, random,
     min: Math.min, max: Math.max, abs: Math.abs, pow: Math.pow, sqrt: Math.sqrt,
 };
