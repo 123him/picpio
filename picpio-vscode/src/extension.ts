@@ -6,7 +6,7 @@ import { createStatusBar }  from './statusBar';
 import { TaskTreeProvider, QuickAccessProvider } from './taskTree';
 import { ProjectProvider, LibrariesProvider }    from './projectTree';
 import { picpio, getTerminal }  from './terminal';
-import { newProjectWizard }     from './newProject';
+import { ProjectWizardPanel }   from './projectWizardPanel';
 import { openSerialMonitor }    from './serialMonitor';
 
 /** Find the highest installed XC8 version under C:/Program Files/Microchip/xc8/ */
@@ -133,7 +133,7 @@ export function activate(context: vscode.ExtensionContext): void {
         });
         if (pick) pick.action();
     });
-    reg('picpio.newProject',    () => newProjectWizard());
+    reg('picpio.newProject',    () => ProjectWizardPanel.createOrShow());
     reg('picpio.refresh',       () => refreshAll());
 
     // PlatformIO Core CLI — opens a named terminal

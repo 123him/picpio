@@ -4,14 +4,14 @@ import * as fs     from 'fs';
 import * as cp     from 'child_process';
 import { runRaw }  from './terminal';
 
-interface McuChoice {
+export interface McuChoice {
     label:       string;
     description: string;
     family:      string;
     clock:       string;
 }
 
-const MCU_LIST: McuChoice[] = [
+export const MCU_LIST: McuChoice[] = [
     { label:'PIC18F27K40',      description:'128KB / 64MHz / 3.7KB SRAM — recommended', family:'PIC18', clock:'64000000'  },
     { label:'PIC18F4550',       description:'32KB / 48MHz / USB 2.0',                   family:'PIC18', clock:'48000000'  },
     { label:'PIC18F452',        description:'32KB / 40MHz / SPI + I2C',                 family:'PIC18', clock:'40000000'  },
@@ -25,8 +25,8 @@ const MCU_LIST: McuChoice[] = [
     { label:'PIC32MZ2048EFH144',description:'2MB / 200MHz / MIPS M-Class + FPU',        family:'PIC32', clock:'200000000' },
 ];
 
-const PROGRAMMER_LIST = ['PICKit4', 'PICKit5', 'PICKit3', 'ICD4', 'ICD5', 'Snap', 'PKoB'];
-const FRAMEWORK_LIST  = [
+export const PROGRAMMER_LIST = ['PICKit4', 'PICKit5', 'PICKit3', 'ICD4', 'ICD5', 'Snap', 'PKoB'];
+export const FRAMEWORK_LIST  = [
     { label:'arduino',    description:'Arduino-style API — setup()/loop(), digitalWrite(), Wire, Serial' },
     { label:'bare-metal', description:'Direct XC8/XC16/XC32 register access' },
 ];
@@ -186,84 +186,63 @@ function scaffoldProject(opts: {
     }, null, 2));
 }
 
-export async function newProjectWizard(): Promise<void> {
-    // Step 1: Project name
-    const name = await vscode.window.showInputBox({
-        title:         'PICPIO: New Project (1/4) — Project Name',
-        prompt:        'Enter a name for your project',
-        placeHolder:   'my_project',
-        validateInput: v => /^[a-zA-Z0-9_-]+$/.test(v) ? null : 'Only letters, numbers, _ and - allowed',
-    });
-    if (!name) return;
+export interface CreateProjectOptions {
+    name:       string;
+    mcu:        string;
+    framework:  string;
+    programmer: string;
+    projectDir: string;
+}
 
-    // Step 2: MCU
-    const mcu = await vscode.window.showQuickPick(
-        MCU_LIST.map(m => ({ label: m.label, description: m.description, detail: `Family: ${m.family}`, _data: m })),
-        { title: 'PICPIO: New Project (2/4) — Select MCU', matchOnDescription: true, matchOnDetail: true }
-    );
-    if (!mcu) return;
+export interface CreateProjectResult {
+    ok:         boolean;
+    error?:     string;
+    projectDir: string;
+}
 
-    // Step 3: Framework
-    const fw = await vscode.window.showQuickPick(
-        FRAMEWORK_LIST.map(f => ({ label: f.label, description: f.description })),
-        { title: 'PICPIO: New Project (3/4) — Framework' }
-    );
-    if (!fw) return;
+// Creates a project from wizard input, returns ok/error instead of showing UI
+export async function createProject(opts: CreateProjectOptions): Promise<CreateProjectResult> {
+    const { name, mcu, framework, programmer, projectDir } = opts;
 
-    // Step 4: Programmer
-    const prog = await vscode.window.showQuickPick(PROGRAMMER_LIST, {
-        title: 'PICPIO: New Project (4/4) — Programmer'
-    });
-    if (!prog) return;
+    const mcuData = MCU_LIST.find(m => m.label === mcu);
+    if (!mcuData) return { ok: false, error: `Unknown MCU '${mcu}'`, projectDir };
 
-    // Choose location
-    const uri = await vscode.window.showOpenDialog({
-        canSelectFolders: true, canSelectFiles: false, canSelectMany: false,
-        title:            'Choose parent folder for the new project',
-    });
-    if (!uri?.[0]) return;
-
-    const projectDir = path.join(uri[0].fsPath, name);
-    const mcuData    = mcu._data;
+    if (fs.existsSync(projectDir)) {
+        return { ok: false, error: `Folder already exists: ${projectDir}`, projectDir };
+    }
 
     if (isPicpioInstalled()) {
         // picpio.exe is available — let it scaffold the project
-        const fwFlag = fw.label === 'arduino' ? '--framework arduino' : '';
+        const fwFlag = framework === 'arduino' ? '--framework arduino' : '';
         runRaw(
-            `picpio init --name ${name} --mcu ${mcu.label} --family ${mcuData.family} ` +
-            `--programmer ${prog} --clock ${mcuData.clock} ${fwFlag} --output "${projectDir}"`
+            `picpio init --name ${name} --mcu ${mcu} --family ${mcuData.family} ` +
+            `--programmer ${programmer} --clock ${mcuData.clock} ${fwFlag} --output "${projectDir}"`
         );
 
         // Poll until folder appears (max 10s)
         await waitForFolder(projectDir, 10000);
     } else {
         // picpio.exe not found — scaffold directly from the extension
-        vscode.window.showWarningMessage(
-            `picpio.exe not found in PATH — creating project structure directly. ` +
-            `Build commands won't work until picpio.exe is installed and added to PATH.`,
-            'OK'
-        );
         scaffoldProject({
             projectDir,
             name,
-            mcu:        mcu.label,
+            mcu,
             family:     mcuData.family,
             clock:      mcuData.clock,
-            programmer: prog,
-            framework:  fw.label,
+            programmer,
+            framework,
         });
     }
 
     if (!fs.existsSync(projectDir)) {
-        vscode.window.showErrorMessage(
-            `Could not create project at '${projectDir}'. ` +
-            `Check that picpio.exe is installed: https://github.com/picpio/picpio`
-        );
-        return;
+        return {
+            ok: false,
+            error: `Could not create project at '${projectDir}'. Check that picpio.exe is installed.`,
+            projectDir,
+        };
     }
 
-    vscode.window.showInformationMessage(`Project '${name}' created at ${projectDir}`);
-    await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(projectDir), false);
+    return { ok: true, projectDir };
 }
 
 function waitForFolder(dir: string, timeoutMs: number): Promise<void> {
