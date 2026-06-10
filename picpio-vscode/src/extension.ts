@@ -8,6 +8,7 @@ import { ProjectProvider, LibrariesProvider }    from './projectTree';
 import { picpio, getTerminal }  from './terminal';
 import { ProjectWizardPanel }   from './projectWizardPanel';
 import { openSerialMonitor }    from './serialMonitor';
+import { insertPeripheralSnippet } from './peripheralInsert';
 
 /** Find the highest installed XC8 version under C:/Program Files/Microchip/xc8/ */
 function findXC8Version(): string {
@@ -134,6 +135,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (pick) pick.action();
     });
     reg('picpio.newProject',    () => ProjectWizardPanel.createOrShow());
+    reg('picpio.insertPeripheral', (kind: string, pinIndex?: number) => insertPeripheralSnippet(kind, pinIndex));
     reg('picpio.refresh',       () => refreshAll());
 
     // PlatformIO Core CLI — opens a named terminal

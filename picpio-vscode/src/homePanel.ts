@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { readConfig, listInstalledLibs, formatClock } from './iniParser';
+import { SNIPPETS } from './peripheralInsert';
 import * as fs   from 'fs';
 import * as path from 'path';
 
@@ -36,6 +37,20 @@ const BOARDS = [
     { mcu:'PIC32MX360F512L',   family:'PIC32', flash:'512KB', ram:'32KB',  speed:'80MHz',  notes:'MIPS32 M4K | USB | CAN' },
     { mcu:'PIC32MZ2048EFH144', family:'PIC32', flash:'2MB',   ram:'512KB', speed:'200MHz', notes:'MIPS M-Class + FPU | Ethernet' },
 ];
+
+function peripheralControl(kind: string, btnLabel: string): string {
+    const snip = SNIPPETS[kind];
+    const select = snip.pinOptions
+        ? `<select class="pin-select" id="pin-${kind}">${
+            snip.pinOptions.map((p, i) => `<option value="${i}">${p.label}</option>`).join('')
+          }</select>`
+        : '';
+    return `
+        <div class="periph-item">
+          <button class="pbtn outline" onclick="sendPeriph('${kind}')">${btnLabel}</button>
+          ${select}
+        </div>`;
+}
 
 function relativeTime(ms: number): string {
     const diff = Date.now() - ms;
@@ -117,6 +132,9 @@ export class HomePanel {
                 }
                 break;
             case 'addCustom': vscode.commands.executeCommand('picpio.libAdd'); break;
+            case 'insertPeripheral':
+                if (msg.name) vscode.commands.executeCommand('picpio.insertPeripheral', msg.name, msg.pin !== undefined ? Number(msg.pin) : undefined);
+                break;
             case 'openPath':
                 if (msg.path) {
                     vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(msg.path), false);
@@ -177,6 +195,13 @@ export class HomePanel {
             <button class="pbtn orange" onclick="send('monitor')">&#128268; Monitor</button>
             <button class="pbtn gray"   onclick="send('clean')">&#128465; Clean</button>
           </div>
+          ${cfg.framework === 'arduino' ? `
+          <div class="periph-row">
+            ${peripheralControl('spi',   '+ SPI')}
+            ${peripheralControl('usart', '+ USART')}
+            ${peripheralControl('i2c',   '+ I2C')}
+            ${peripheralControl('pwm',   '+ PWM')}
+          </div>` : ''}
         </div>` : `
         <div class="empty-env">
           No project open &mdash; open a folder containing <code>picpio.ini</code>
@@ -302,6 +327,12 @@ body{background:var(--bg);color:var(--text);font:13px/1.5 'Segoe UI',-apple-syst
 .pbtn.gray{background:#3e3e42;color:var(--text)}
 .pbtn.outline{background:transparent;border:1px solid var(--border);color:var(--text)}
 .pbtn.outline:hover{border-color:var(--accent);color:var(--accent)}
+
+/* PERIPHERALS */
+.periph-row{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px}
+.periph-item{display:flex;align-items:center;gap:6px}
+.pin-select{background:#2a2a2a;border:1px solid var(--border);color:var(--sub);border-radius:4px;padding:5px 8px;font-size:11px;cursor:pointer}
+.pin-select:focus{border-color:var(--accent);color:var(--text)}
 
 /* LIBS */
 .lib-toolbar{display:flex;gap:10px;align-items:center;padding:16px 28px;border-bottom:1px solid var(--border)}
@@ -494,6 +525,11 @@ body{background:var(--bg);color:var(--text);font:13px/1.5 'Segoe UI',-apple-syst
 <script>
 const vscode = acquireVsCodeApi();
 function send(cmd, arg) { vscode.postMessage({ command: cmd, name: arg, path: arg }); }
+
+function sendPeriph(kind) {
+  const sel = document.getElementById('pin-' + kind);
+  vscode.postMessage({ command: 'insertPeripheral', name: kind, pin: sel ? sel.value : undefined });
+}
 
 function show(id) {
   document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
