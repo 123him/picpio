@@ -1,15 +1,19 @@
 // Runs transpiled sketch code (see transpile.ts) inside a vm sandbox that
 // mimics the Arduino-compat API surface, emitting JSON events for pin
 // changes, PWM, Serial and I2C/SPI traffic. Runs setup() once, then loop()
-// repeatedly on a real-time interval (delay() advances a virtual clock but
-// does not block), so the main thread can stream "live" updates to a webview.
+// repeatedly on a real-time interval. delay()/delayMicroseconds() advance a
+// virtual clock AND really pause (scaled down) so pin changes either side of
+// a delay are streamed to the webview with visibly distinct timing.
 import { parentPort, workerData } from 'worker_threads';
 import * as vm from 'vm';
 
 const code: string = workerData.code;
 const MAX_ITERS = 200;
+const MAX_RUN_REAL_MS = 20000;
 const LOOP_INTERVAL_MS = 120;
-const RUN_TIMEOUT_MS = 1500;
+const RUN_TIMEOUT_MS = 5000;
+// 1 virtual ms of delay() == this many real ms of pause (10x speedup).
+const DELAY_SCALE = 0.1;
 
 let stopped = false;
 let virtualMillis = 0;
@@ -59,14 +63,25 @@ function analogRead(pin: number): number {
     return Math.max(0, Math.min(1023, v));
 }
 
+// Really pauses this worker thread for `ms` real milliseconds, so events
+// emitted before/after a delay() reach the webview with a perceptible gap.
+function sleepReal(ms: number): void {
+    const real = Math.round(ms);
+    if (real <= 0) return;
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, real);
+}
+
 function delay(ms: number): void {
     const m = Number(ms) || 0;
     virtualMillis += m;
     emit({ t: 'delay', ms: m, millis: Math.floor(virtualMillis) });
+    sleepReal(m * DELAY_SCALE);
 }
 
 function delayMicroseconds(us: number): void {
-    virtualMillis += (Number(us) || 0) / 1000;
+    const u = Number(us) || 0;
+    virtualMillis += u / 1000;
+    sleepReal((u / 1000) * DELAY_SCALE);
 }
 
 function millis(): number { return Math.floor(virtualMillis); }
@@ -233,8 +248,9 @@ if (!finished) {
 
 if (!finished) {
     let iter = 0;
+    const startTime = Date.now();
     interval = setInterval(() => {
-        if (stopped || iter >= MAX_ITERS) {
+        if (stopped || iter >= MAX_ITERS || Date.now() - startTime > MAX_RUN_REAL_MS) {
             finish();
             return;
         }
