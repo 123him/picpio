@@ -107,7 +107,7 @@ button.primary:hover{background:#ff9933;color:#1e1e1e}
 .pin-led.input-on{background:#3794ff;box-shadow:0 0 8px #3794ff}
 .pin-led.pwm{background:var(--accent);box-shadow:0 0 8px var(--accent)}
 .pin-name{font-weight:600;font-size:12px}
-.pin-mode{color:var(--sub);font-size:10px;margin-top:2px}
+.pin-mode{color:var(--sub);font-size:9px;margin-top:2px;line-height:1.2;word-break:break-all;overflow-wrap:anywhere}
 .log-box{background:#161616;border:1px solid var(--border);border-radius:var(--radius);padding:10px;height:160px;overflow-y:auto;font-family:'Cascadia Code',Consolas,monospace;font-size:12px;white-space:pre-wrap;word-break:break-all}
 .log-line{margin:0 0 2px}
 .log-tx{color:#4ec9b0}
@@ -226,7 +226,7 @@ window.addEventListener('message', e => {
       setStatus(m.status, m.message);
       break;
     case 'pinMode':
-      setMode(m.pin, m.mode);
+      setMode(m.pin, m.mode === 'INPUT_PULLUP' ? 'PULLUP' : m.mode);
       if (m.mode === 'OUTPUT') {
         pinIsInput.delete(m.pin);
         setInputClickable(m.pin, false);
