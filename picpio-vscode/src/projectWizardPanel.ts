@@ -24,12 +24,17 @@ export class ProjectWizardPanel {
     private constructor(panel: vscode.WebviewPanel) {
         this._panel = panel;
         this._panel.webview.html = this._html();
+        // Hide sidebar/panel and maximize the editor area so the centered
+        // card sits in the middle of the whole VS Code window.
+        vscode.commands.executeCommand('workbench.action.maximizeEditorHideSidebar');
         this._panel.onDidDispose(() => this._dispose(), null, this._disposables);
         this._panel.webview.onDidReceiveMessage(m => this._handle(m), null, this._disposables);
     }
 
     private _dispose(): void {
         ProjectWizardPanel.current = undefined;
+        // Restore the sidebar/panel layout
+        vscode.commands.executeCommand('workbench.action.maximizeEditorHideSidebar');
         this._disposables.forEach(d => d.dispose());
     }
 
