@@ -126,7 +126,9 @@ const SPI = {
     setBitOrder(_o: number) { /* no-op */ },
     transfer(b: number) {
         const tx = Number(b) & 0xFF;
-        const rx = 0;
+        // No real slave attached in simulation: assume a MISO/MOSI loopback
+        // so transfer() echoes the byte back, like a wired-loopback test rig.
+        const rx = tx;
         emit({ t: 'spi', tx, rx });
         return rx;
     },
