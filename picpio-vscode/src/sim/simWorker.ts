@@ -8,8 +8,10 @@ import { parentPort, workerData } from 'worker_threads';
 import * as vm from 'vm';
 
 const code: string = workerData.code;
-const MAX_ITERS = 200;
-const MAX_RUN_REAL_MS = 20000;
+// Safety nets against a runaway loop() if the user never clicks Stop —
+// generous enough that a normal "live" session won't hit them.
+const MAX_ITERS = 100000;
+const MAX_RUN_REAL_MS = 10 * 60 * 1000; // 10 minutes
 const LOOP_INTERVAL_MS = 120;
 const RUN_TIMEOUT_MS = 5000;
 // 1 virtual ms of delay() == this many real ms of pause (10x speedup).
